@@ -1,0 +1,54 @@
+// a representation of probability that supports either symbolic or concrete
+// values
+struct probability;
+
+// a conditional probability table
+struct cpt;
+struct bayesian_network;
+struct compiled_bayesian_network;
+
+// specifies how many values each variable in the bayesian network can take
+// shape[0] gives the # of values for var 0
+typedef unsigned int* shape;
+
+// create a Bayesian network data structure
+bayesian_network* make_bayesian_network(unsigned int num_vars,
+            shape s,
+            cpt * cpts,              // list of conditional probability tables
+            unsigned int num_cpt);
+
+// create a CPT
+// probabilities[i] gives the conditional probability at index i
+//
+// For example: if vars = [0, 1] and shape = [3,2], meaning there are two variables in 
+// this CPT (vars 0 and 1) and var 0 has 3 values and var 1 has 2 values, then
+// i=0 is state (var 0 = 0, var 1 = 0)
+// i=1 is state (var 0 = 0, var 1 = 1)
+// i=2 is state (var 0 = 1, var 1 = 0)
+// ...
+cpt* make_cpt(shape s, unsigned int* vars, unsigned int num_vars, probability* probabilities)
+
+// a struct that maps symbol probabilities to concrete probabilities
+struct symbol_table; 
+
+// generate an empty symbol table
+symbol_table* make_symbol_table();
+
+// sets a probability in the symbol table 
+void set_probability(symbol_table* st, unsigned int idx, double probability);
+
+// make a symbol probability that will be substituted later during inference
+// the ID uniquely identifies this probability
+probability* make_symbolic_prob(unsigned int id);
+
+// make a concrete probability
+probability* make_concrete_prob(double val);
+
+
+// compile bayesian network for amortized inference
+compiled_bayesian_network* compile_bayesian_network(unsigned int num_vars, cpt * cpts, unsigned int num_cpt);
+
+// perform marginal inference over a subset of variables
+// returns a list of the marginal probability of each variable in `query_vars` taking a particular value, following
+// the order that they appear in `query_vars`.
+double** marginal(compiled_bayesian_network* bn, symbol_table* st, unsigned_int* query_vars, unsigned_int num_vars);
