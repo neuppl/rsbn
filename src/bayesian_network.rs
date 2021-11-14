@@ -200,11 +200,14 @@ impl CompiledBayesianNetwork {
                 };
             }
 
+            let mut var_vec = cpt.parents.clone();
+            var_vec.push(cpt.var);
+
             // make parameters clause
             for (assignment, param) in params.iter() {
                 let mut cur_indic: Vec<VarLabel> = Vec::new();
                 for (indic_var, indic_value) in assignment.iter().enumerate() {
-                    cur_indic.push(indicator_table[&(indic_var, *indic_value)]);
+                    cur_indic.push(indicator_table[&(var_vec[indic_var], *indic_value)]);
                 }
                 // construct clause of cur_indic <=> param
                 // first, cur_indic => param
