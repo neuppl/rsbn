@@ -25,14 +25,17 @@ type Assignment = Vec<BnVal>;
 /// A conditional probability table
 #[derive(Debug, Clone)]
 struct CPT {
-    vars: Vec<BnVar>,
-    // assignments occurr relative to the order in `vars`
+    var: BnVar,
+    parents: Vec<BnVar>,
+    /// assignments occurr relative to the order in `parents`, with
+    /// `var` *last*
     probabilities: HashMap<Assignment, Probability>
 }
 
 impl CPT {
-    fn new(vars: Vec<BnVar>, probabilities: HashMap<Assignment, Probability>) -> CPT {
-        CPT { vars, probabilities }
+    fn new(var: BnVar, parents: Vec<BnVar>, probabilities: HashMap<Assignment, Probability>) -> CPT {
+        // TODO: verify that this is a valid CPT
+        CPT { var, parents, probabilities }
     }
 }
 
@@ -44,46 +47,41 @@ impl CPT {
 pub struct AssignmentIter {
     shape: Vec<usize>,
     vars: Vec<usize>,
-    cur: Assignment
+    cur: Option<Assignment>
 }
 
 impl AssignmentIter {
     pub fn new(shape: Vec<usize>, vars: Vec<usize>) -> AssignmentIter {
-        let cur = vars.iter().map(|_| 0).collect();
         AssignmentIter {
-            shape: shape, vars: vars, cur: cur
+            shape: shape, vars: vars, cur: None
         }
-    } 
+    }
 }
 
 impl Iterator for AssignmentIter {
     type Item = Assignment;
     fn next(&mut self) -> Option<Self::Item> {
-        // do a binary increment of the current state
-        let cur_shape = self.vars.iter().map(|x| self.shape[*x]);
-        let (acc, n) = self.cur.iter().zip(cur_shape).fold((1, Vec::new()), |(cur_acc, mut cur_l), (cur_v, cur_shape)| {
-            if cur_v + cur_acc >= cur_shape {
-                cur_l.push(0);
-                (1, cur_l)
-            } else {
-                cur_l.push(cur_v + cur_acc);
-                (0, cur_l)
-            }
-        });
-        if acc == 1 {
-            return None
+        if self.cur.is_none() {
+            self.cur = Some(self.vars.iter().map(|_| 0).collect());
+            return self.cur.clone()
         } else {
-            return Some(n)
+            // attempt to do a binary increment of the current state
+            let cur_shape : Vec<usize> = self.vars.iter().map(|x| self.shape[*x]).collect();
+            for (idx, assgn) in self.cur.as_mut().unwrap().iter_mut().enumerate() {
+                if *assgn + 1 < cur_shape[idx] {
+                    *assgn = *assgn + 1;
+                    return self.cur.clone();
+                } else {
+                    // add and carry
+                    *assgn = 0;
+                }
+            }
+            // we failed to add without carrying
+            return None;
+
         }
     }
 }
-
-// /// Computes a vector of all possible assignments to variables in shape indexed by vars
-// /// `vars` is a vector of variables (indexes into `shape`)
-// pub fn all_assignments(shape: &Vec<usize>, vars: &[usize]) -> Vec<Assignment> {
-    
-// }
-
 
 struct BayesianNetwork {
     shape: Vec<usize>,
@@ -94,23 +92,25 @@ impl BayesianNetwork {
     /// Generate a new Bayesian network
     /// The `shape` dictates how many variables there are and their domain.
     /// shape[i] says how many values variable i can take.
-    fn new(shape: Vec<usize>, cpts: Vec<CPT>) -> BayesianNetwork {
+    pub fn new(shape: Vec<usize>, cpts: Vec<CPT>) -> BayesianNetwork {
         // sort the CPTs in topological order
-        let mut r : Vec<CPT> = Vec::new();
-        let mut added : HashSet<BnVar> = HashSet::new(); // added to return set
-        while r.len() != cpts.len() {
-            for (i, cur) in cpts.iter().enumerate() {
-                if added.contains(&i) {
-                    continue;
-                }
-                let unseen_pars = cur.vars.iter().filter(|i| !added.contains(i));
-                if unseen_pars.count() == 0 {
-                    r.push(cur.clone());
-                }
+        let mut sorted : Vec<CPT> = Vec::new();
+        let mut added : HashSet<usize> = HashSet::new(); 
+        fn add(sorted: &mut Vec<CPT>, added: &mut HashSet<BnVar>, cpts: &Vec<CPT>, cpt: &CPT) -> () {
+            if added.contains(&cpt.var) { return () };
+            // add the parents
+            for parent in cpt.parents.iter() {
+                let par = cpts.iter().find(|x| x.var == *parent).unwrap();
+                add(sorted, added, cpts, par);
             }
+            assert!(!added.contains(&cpt.var), "Cycle detected in Bayesian network CPT structure");
+            added.insert(cpt.var);
+            sorted.push(cpt.clone())
         }
-        // now r is a list of topologically sorted CPTs
-        return BayesianNetwork { shape: shape, cpts: r }
+        for cpt in cpts.iter() {
+            add(&mut sorted, &mut added, &cpts, cpt);
+        }
+        return BayesianNetwork { shape: shape, cpts: sorted }
     }
 
     fn cpts_topological(&self) -> std::slice::Iter<'_, CPT> {
@@ -129,6 +129,12 @@ impl BayesianNetwork {
 struct SymbolTable {
     /// maps a Bayesian network parameter to its probability (of being true)
     symbol_map: HashMap<usize, f64>
+}
+
+impl SymbolTable {
+    pub fn empty() -> SymbolTable {
+        SymbolTable { symbol_map: HashMap::new() }
+    }
 }
 
 enum CompileMode {
@@ -158,8 +164,6 @@ impl CompiledBayesianNetwork {
         let mut weight_table : HashMap<VarLabel, (f64, f64)> = HashMap::new();
         let mut symbolic_map : HashMap<usize, VarLabel> = HashMap::new();
         let mut clauses : Vec<Vec<Literal>> = Vec::new();
-        // (var, value) -> parameter
-        let mut parameter_table : HashMap<(usize, usize), VarLabel> = HashMap::new();
 
         // make indicator clauses
         for (var_label, sz) in bn.get_shape().iter().enumerate() {
@@ -175,6 +179,9 @@ impl CompiledBayesianNetwork {
             clauses.push(vars.iter().map(|var| Literal::new(var.clone(), true)).collect());
             for i in 0..vars.len() {
                 for j in i..vars.len() {
+                    if i == j {
+                        continue;
+                    }
                     clauses.push(vec![Literal::new(vars[i], false), Literal::new(vars[j], false)]);
                 }
             }
@@ -188,7 +195,7 @@ impl CompiledBayesianNetwork {
                 let v = VarLabel::new(varcount); varcount += 1;
                 params.insert(assignment.clone(), v);
                 match prob {
-                    &Probability::Concrete(p) =>  { weight_table.insert(v.clone(), (1.0 - p, p)); () },
+                    &Probability::Concrete(p) =>  { weight_table.insert(v.clone(), (1.0, p)); () },
                     &Probability::Symbol(vlbl) => { symbolic_map.insert(vlbl, v); () }
                 };
             }
@@ -213,7 +220,7 @@ impl CompiledBayesianNetwork {
 
         // finally, ready to compile the CNF
         let cnf = Cnf::new(clauses);
-        let mut mgr = BddManager::new_default_order(5);
+        let mut mgr = BddManager::new_default_order(varcount as usize);
         let bdd = mgr.from_cnf(&cnf);
         return CompiledBayesianNetwork {
             manager: mgr,
@@ -242,25 +249,87 @@ impl CompiledBayesianNetwork {
         // do the weighted model counts
         for assgn in AssignmentIter::new(self.shape.clone(), vars) {
             let mut cur_bdd = self.bdd;
-            let indicators = assgn.iter().enumerate().map(|(var_idx, value)| {
+            assgn.iter().enumerate().for_each(|(var_idx, value)| {
                 let indic = self.indicators[&(var_idx, *value)];
                 let v = self.manager.var(indic, true);
                 cur_bdd = self.manager.and(cur_bdd, v);
             });
             let wmc_param = BddWmc::new_with_default(0.0, 1.0, weights.clone());
+
             let wmc = self.manager.wmc(cur_bdd, &wmc_param);
             r.insert(assgn, wmc);
         }
-        
         return r;
     }
 
 }
 
 #[test]
+fn test_marginal_0() {
+    // BN : (a)
+    let shape = vec![2];
+    let cpts = vec![
+        CPT::new(0, vec![], HashMap::from([
+            (vec![0], Probability::Concrete(0.1)),
+            (vec![1], Probability::Concrete(0.9))
+            ])), 
+    ];
+    let bn = BayesianNetwork::new(shape, cpts);
+    let mut compiled = CompiledBayesianNetwork::new(bn, CompileMode::BottomUpChaviraDarwicheBDD);
+    let r = compiled.joint_marginal(SymbolTable::empty(), vec![0]);
+    assert_eq!(r[&vec![1]], 0.9);
+    assert_eq!(r[&vec![0]], 0.1);
+}
+
+#[test]
 fn test_marginal_1() {
     // BN : (a) -> (b)
-    let shape = vec![vec![2, 3]];
-    // let cpts = vec![CPT::new]
-    // let bn = BayesianNetwork::new()
+    let shape = vec![2, 2];
+    let cpts = vec![
+        CPT::new(0, vec![], HashMap::from([
+            (vec![0], Probability::Concrete(0.1)),
+            (vec![1], Probability::Concrete(0.9))
+            ])), 
+         CPT::new(1, vec![0], HashMap::from([
+            (vec![0, 0], Probability::Concrete(0.3)),
+            (vec![0, 1], Probability::Concrete(0.7)),
+            (vec![1, 0], Probability::Concrete(0.4)),
+            (vec![1, 1], Probability::Concrete(0.6)),
+            ])), 
+    ];
+    let bn = BayesianNetwork::new(shape, cpts);
+    let mut compiled = CompiledBayesianNetwork::new(bn, CompileMode::BottomUpChaviraDarwicheBDD);
+    let r = compiled.joint_marginal(SymbolTable::empty(), vec![0, 1]);
+
+    assert_eq!(r[&vec![0, 0]], 0.3 * 0.1);
+    assert_eq!(r[&vec![0, 1]], 0.7 * 0.1);
+    assert_eq!(r[&vec![1, 0]], 0.4 * 0.9);
+    assert_eq!(r[&vec![1, 1]], 0.6 * 0.9);
+}
+
+#[test]
+fn test_marginal_2() {
+    // BN : (a) -> (b)
+    let shape = vec![2, 3];
+    let cpts = vec![
+        CPT::new(0, vec![], HashMap::from([
+            (vec![0], Probability::Concrete(0.1)),
+            (vec![1], Probability::Concrete(0.9))
+            ])), 
+         CPT::new(1, vec![0], HashMap::from([
+            (vec![0, 0], Probability::Concrete(0.1)),
+            (vec![0, 1], Probability::Concrete(0.4)),
+            (vec![0, 2], Probability::Concrete(0.5)),
+            (vec![1, 0], Probability::Concrete(0.3)),
+            (vec![1, 1], Probability::Concrete(0.5)),
+            (vec![1, 2], Probability::Concrete(0.2)),
+            ])), 
+    ];
+    let bn = BayesianNetwork::new(shape, cpts);
+    let mut compiled = CompiledBayesianNetwork::new(bn, CompileMode::BottomUpChaviraDarwicheBDD);
+    let r = compiled.joint_marginal(SymbolTable::empty(), vec![0, 1]);
+
+    assert_eq!(r[&vec![0, 2]], 0.1 * 0.5);
+    assert_eq!(r[&vec![1, 2]], 0.9 * 0.2);
+    assert_eq!(r[&vec![1, 1]], 0.9 * 0.5);
 }
