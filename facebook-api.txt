@@ -15,7 +15,7 @@ typedef unsigned int* shape;
 bayesian_network* make_bayesian_network(unsigned int num_vars,
             shape s,
             cpt * cpts,              // list of conditional probability tables
-            unsigned int num_cpt);
+            );
 
 // create a CPT
 // probabilities[i] gives the conditional probability at index i

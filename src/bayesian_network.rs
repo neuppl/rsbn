@@ -9,7 +9,7 @@ use rsdd::repr::var_label::{Literal, VarLabel};
 /// Can be symbolic (to be substituted in later for a known probability)
 /// or concrete
 #[derive(Debug, Clone)]
-enum Probability {
+pub enum Probability {
     /// a symbolic probability to be substituted in later
     Symbol(usize),
     /// a concrete probability whose value is fixed at compile-time
@@ -20,11 +20,11 @@ enum Probability {
 type BnVar = usize;
 /// A Bayesian network value
 type BnVal = usize;
-type Assignment = Vec<BnVal>;
+pub type Assignment = Vec<BnVal>;
 
 /// A conditional probability table
 #[derive(Debug, Clone)]
-struct CPT {
+pub struct CPT {
     var: BnVar,
     parents: Vec<BnVar>,
     /// assignments occurr relative to the order in `parents`, with
@@ -33,7 +33,7 @@ struct CPT {
 }
 
 impl CPT {
-    fn new(var: BnVar, parents: Vec<BnVar>, probabilities: HashMap<Assignment, Probability>) -> CPT {
+    pub fn new(var: BnVar, parents: Vec<BnVar>, probabilities: HashMap<Assignment, Probability>) -> CPT {
         // TODO: verify that this is a valid CPT
         CPT { var, parents, probabilities }
     }
@@ -335,4 +335,34 @@ fn test_marginal_2() {
     assert_eq!(r[&vec![0, 2]], 0.1 * 0.5);
     assert_eq!(r[&vec![1, 2]], 0.9 * 0.2);
     assert_eq!(r[&vec![1, 1]], 0.9 * 0.5);
+}
+
+#[test]
+fn test_marginal_3() {
+    // BN : (a) -> (b) <- (c)
+    let shape = vec![2, 2, 2];
+    let cpts = vec![
+        CPT::new(0, vec![], HashMap::from([
+            (vec![0], Probability::Concrete(0.1)),
+            (vec![1], Probability::Concrete(0.9))
+            ])), 
+        CPT::new(2, vec![], HashMap::from([
+            (vec![0], Probability::Concrete(0.2)),
+            (vec![1], Probability::Concrete(0.8))
+            ])), 
+         CPT::new(1, vec![0, 2], HashMap::from([
+            (vec![0, 0, 0], Probability::Concrete(0.1)),
+            (vec![0, 0, 1], Probability::Concrete(0.4)),
+            (vec![1, 0, 0], Probability::Concrete(0.3)),
+            (vec![1, 0, 1], Probability::Concrete(0.5)),
+            (vec![1, 1, 0], Probability::Concrete(0.15)),
+            (vec![1, 1, 1], Probability::Concrete(0.85)),
+            ])), 
+    ];
+    let bn = BayesianNetwork::new(shape, cpts);
+    let mut compiled = CompiledBayesianNetwork::new(bn, CompileMode::BottomUpChaviraDarwicheBDD);
+    let r = compiled.joint_marginal(SymbolTable::empty(), vec![0, 1, 2]);
+
+    assert_eq!(r[&vec![0, 0, 0]], 0.1 * 0.2 * 0.1);
+    assert_eq!(r[&vec![1, 0, 1]], 0.9 * 0.8 * 0.15);
 }
