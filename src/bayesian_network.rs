@@ -83,7 +83,7 @@ impl Iterator for AssignmentIter {
     }
 }
 
-struct BayesianNetwork {
+pub struct BayesianNetwork {
     shape: Vec<usize>,
     cpts: Vec<CPT>, // assumed (internally) to be in topological order
 }
@@ -126,7 +126,7 @@ impl BayesianNetwork {
     }
 }
 
-struct SymbolTable {
+pub struct SymbolTable {
     /// maps a Bayesian network parameter to its probability (of being true)
     symbol_map: HashMap<usize, f64>
 }
@@ -135,13 +135,19 @@ impl SymbolTable {
     pub fn empty() -> SymbolTable {
         SymbolTable { symbol_map: HashMap::new() }
     }
+
+    pub fn new(symbol_map: HashMap<usize, f64>) -> SymbolTable {
+        SymbolTable {
+            symbol_map
+        }
+    }
 }
 
-enum CompileMode {
+pub enum CompileMode {
     BottomUpChaviraDarwicheBDD
 }
 
-struct CompiledBayesianNetwork {
+pub struct CompiledBayesianNetwork {
     manager: BddManager,
     mode: CompileMode,
     shape: Vec<usize>,
@@ -156,7 +162,7 @@ struct CompiledBayesianNetwork {
 
 
 impl CompiledBayesianNetwork {
-    pub fn new(bn: BayesianNetwork, mode: CompileMode) -> CompiledBayesianNetwork {
+    pub fn new(bn: &BayesianNetwork, mode: CompileMode) -> CompiledBayesianNetwork {
         // the key is (var, state)
         let mut varcount = 0;
         // (var, value) -> indicator
@@ -236,8 +242,12 @@ impl CompiledBayesianNetwork {
         }
     }
 
+    pub fn get_shape(&self) -> &Vec<usize> {
+        return &self.shape
+    }
+
     /// Computes the joint marginal probability of the subset of variables `vars`
-    pub fn joint_marginal(&mut self, st: SymbolTable, vars: Vec<BnVar>) -> HashMap<Assignment, f64> {
+    pub fn joint_marginal(&mut self, st: &SymbolTable, vars: &[BnVar]) -> HashMap<Assignment, f64> {
         // iterate over assignments, create indicator for that assignment,
         // conjoin it to the bdd and do a weighted model count
         let mut r : HashMap<Assignment, f64> = HashMap::new();
@@ -250,7 +260,7 @@ impl CompiledBayesianNetwork {
         }
 
         // do the weighted model counts
-        for assgn in AssignmentIter::new(self.shape.clone(), vars) {
+        for assgn in AssignmentIter::new(self.shape.clone(), vars.to_vec()) {
             let mut cur_bdd = self.bdd;
             assgn.iter().enumerate().for_each(|(var_idx, value)| {
                 let indic = self.indicators[&(var_idx, *value)];
@@ -278,8 +288,8 @@ fn test_marginal_0() {
             ])), 
     ];
     let bn = BayesianNetwork::new(shape, cpts);
-    let mut compiled = CompiledBayesianNetwork::new(bn, CompileMode::BottomUpChaviraDarwicheBDD);
-    let r = compiled.joint_marginal(SymbolTable::empty(), vec![0]);
+    let mut compiled = CompiledBayesianNetwork::new(&bn, CompileMode::BottomUpChaviraDarwicheBDD);
+    let r = compiled.joint_marginal(&SymbolTable::empty(), &vec![0]);
     assert_eq!(r[&vec![1]], 0.9);
     assert_eq!(r[&vec![0]], 0.1);
 }
@@ -301,8 +311,8 @@ fn test_marginal_1() {
             ])), 
     ];
     let bn = BayesianNetwork::new(shape, cpts);
-    let mut compiled = CompiledBayesianNetwork::new(bn, CompileMode::BottomUpChaviraDarwicheBDD);
-    let r = compiled.joint_marginal(SymbolTable::empty(), vec![0, 1]);
+    let mut compiled = CompiledBayesianNetwork::new(&bn, CompileMode::BottomUpChaviraDarwicheBDD);
+    let r = compiled.joint_marginal(&SymbolTable::empty(), &vec![0, 1]);
 
     assert_eq!(r[&vec![0, 0]], 0.3 * 0.1);
     assert_eq!(r[&vec![0, 1]], 0.7 * 0.1);
@@ -329,8 +339,8 @@ fn test_marginal_2() {
             ])), 
     ];
     let bn = BayesianNetwork::new(shape, cpts);
-    let mut compiled = CompiledBayesianNetwork::new(bn, CompileMode::BottomUpChaviraDarwicheBDD);
-    let r = compiled.joint_marginal(SymbolTable::empty(), vec![0, 1]);
+    let mut compiled = CompiledBayesianNetwork::new(&bn, CompileMode::BottomUpChaviraDarwicheBDD);
+    let r = compiled.joint_marginal(&SymbolTable::empty(), &vec![0, 1]);
 
     assert_eq!(r[&vec![0, 2]], 0.1 * 0.5);
     assert_eq!(r[&vec![1, 2]], 0.9 * 0.2);
@@ -360,8 +370,8 @@ fn test_marginal_3() {
             ])), 
     ];
     let bn = BayesianNetwork::new(shape, cpts);
-    let mut compiled = CompiledBayesianNetwork::new(bn, CompileMode::BottomUpChaviraDarwicheBDD);
-    let r = compiled.joint_marginal(SymbolTable::empty(), vec![0, 1, 2]);
+    let mut compiled = CompiledBayesianNetwork::new(&bn, CompileMode::BottomUpChaviraDarwicheBDD);
+    let r = compiled.joint_marginal(&SymbolTable::empty(), &vec![0, 1, 2]);
 
     assert_eq!(r[&vec![0, 0, 0]], 0.1 * 0.2 * 0.1);
     assert_eq!(r[&vec![1, 0, 1]], 0.9 * 0.8 * 0.15);
