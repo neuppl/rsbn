@@ -390,7 +390,7 @@ dependencies = [
 [[package]]
 name = "rsdd"
 version = "0.1.0"
-source = "git+https://github.com/SHoltzen/rsdd#28ba18d30da0a3eaa9be8019ad53a7221f569b05"
+source = "git+https://github.com/rodrigodesalvobraz/rsdd#6fc71471fc053b2387545454f9d35f32ad8f02ad"
 dependencies = [
  "clap",
  "dimacs",
