@@ -1,5 +1,5 @@
 pub mod bayesian_network;
-extern crate libc;    
+extern crate libc;
 
 use std::{collections::{HashMap}, iter::FromIterator};
 
@@ -23,11 +23,11 @@ pub extern "C" fn make_symbolic_prob(label: usize) -> *mut Probability {
 /// `assignments`: an array of Bayesian network assignments corresponding to
 ///    the order in `parents` with the last element being the assignment to
 ///    `var`
-/// `probabilities`: list of probabilities corresponding to each element in 
+/// `probabilities`: list of probabilities corresponding to each element in
 ///     `assignments`
 #[no_mangle]
 pub extern "C" fn make_cpt(var: usize, num_parents: usize,
-    parents: *const usize, num_assignments: usize, 
+    parents: *const usize, num_assignments: usize,
     assigments: *const *const usize, probabilities: *const *const Probability) -> *mut CPT {
         let parent_vec = unsafe {
             assert!(!parents.is_null());
@@ -35,13 +35,13 @@ pub extern "C" fn make_cpt(var: usize, num_parents: usize,
         };
         let prob : HashMap<Assignment, Probability> = unsafe {
             assert!(!assigments.is_null());
-            let assign : Vec<*const usize> = 
+            let assign : Vec<*const usize> =
                 std::slice::from_raw_parts(assigments, num_assignments).to_vec();
-            let assign_vec : Vec<Vec<usize>> = assign.iter().map(|x| 
+            let assign_vec : Vec<Vec<usize>> = assign.iter().map(|x|
                 std::slice::from_raw_parts(*x, num_parents + 1).to_vec()
             ).collect();
             assert!(!probabilities.is_null());
-            let probabilities : Vec<*const Probability> = 
+            let probabilities : Vec<*const Probability> =
                 std::slice::from_raw_parts(probabilities, num_assignments).to_vec();
             let prob_unwrap : Vec<Probability> = probabilities.iter().map(|x| (**x).clone()).collect();
             HashMap::from_iter(assign_vec.into_iter().zip(prob_unwrap))
@@ -50,7 +50,7 @@ pub extern "C" fn make_cpt(var: usize, num_parents: usize,
 }
 
 #[no_mangle]
-pub extern "C" fn make_bayesian_network(num_vars: usize, 
+pub extern "C" fn make_bayesian_network(num_vars: usize,
     shape: *const usize, num_cpts: usize, cpts: *const *const CPT) -> *mut BayesianNetwork {
         unsafe {
             let shape = std::slice::from_raw_parts(shape, num_vars).to_vec();
@@ -64,7 +64,7 @@ pub extern "C" fn make_bayesian_network(num_vars: usize,
 /// Construct a new symbol label that mapes the variable indexed by labels[i] to
 /// weight probs[i]
 #[no_mangle]
-pub extern "C" fn make_symbol_table(num_symbols: usize, 
+pub extern "C" fn make_symbol_table(num_symbols: usize,
     labels: *const usize, probs: *const f64) -> *mut SymbolTable {
     unsafe {
         let labels = std::slice::from_raw_parts(labels, num_symbols);
@@ -86,7 +86,7 @@ pub extern "C" fn make_empty_symbol_table() -> *mut SymbolTable {
 #[no_mangle]
 pub extern "C" fn compile_bayesian_network(bn: *const BayesianNetwork) -> *mut CompiledBayesianNetwork {
     unsafe {
-        return Box::into_raw(Box::new(CompiledBayesianNetwork::new(bn.as_ref().unwrap(), 
+        return Box::into_raw(Box::new(CompiledBayesianNetwork::new(bn.as_ref().unwrap(),
             CompileMode::BottomUpChaviraDarwicheBDD)));
     }
 }

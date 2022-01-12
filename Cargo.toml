@@ -13,4 +13,5 @@ crate-type = ["staticlib", "rlib", "dylib"]
 
 [dependencies]
 libc = "0.2"
-rsdd = { git = "https://github.com/SHoltzen/rsdd" }
+assert_approx_eq = "1.1.0"
+rsdd = { git = "https://github.com/rodrigodesalvobraz/rsdd" }
