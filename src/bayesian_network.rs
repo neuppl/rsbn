@@ -1,5 +1,8 @@
-use std::collections::{HashMap, HashSet};
-use std::iter::FromIterator;
+use std::{
+    collections::{HashMap, HashSet},
+    iter::FromIterator,
+    rc::Rc,
+};
 
 use rsdd::builder::bdd::{BddBuilder, RobddBuilder};
 use rsdd::builder::cache::all_app::AllTable;
@@ -9,7 +12,6 @@ use rsdd::repr::cnf::Cnf;
 use rsdd::repr::ddnnf::DDNNFPtr;
 use rsdd::repr::var_label::{Literal, VarLabel};
 
-use assert_approx_eq::assert_approx_eq;
 use rsdd::repr::wmc::WmcParams;
 use rsdd::util::semirings::{RealSemiring, Semiring};
 
@@ -81,13 +83,13 @@ impl Iterator for AssignmentIter {
     fn next(&mut self) -> Option<Self::Item> {
         if self.cur.is_none() {
             self.cur = Some(self.vars.iter().map(|_| 0).collect());
-            return self.cur.clone();
+            self.cur.clone()
         } else {
             // attempt to do a binary increment of the current state
             let cur_shape: Vec<usize> = self.vars.iter().map(|x| self.shape[*x]).collect();
             for (idx, assgn) in self.cur.as_mut().unwrap().iter_mut().enumerate() {
                 if *assgn + 1 < cur_shape[idx] {
-                    *assgn = *assgn + 1;
+                    *assgn += 1;
                     return self.cur.clone();
                 } else {
                     // add and carry
@@ -95,7 +97,7 @@ impl Iterator for AssignmentIter {
                 }
             }
             // we failed to add without carrying
-            return None;
+            None
         }
     }
 }
@@ -132,22 +134,22 @@ impl BayesianNetwork {
         for cpt in cpts.iter() {
             add(&mut sorted, &mut added, &cpts, cpt);
         }
-        return BayesianNetwork {
+        BayesianNetwork {
             shape,
             cpts: sorted,
-        };
+        }
     }
 
-    fn cpts_topological(&self) -> std::slice::Iter<'_, CPT> {
+    fn cpts_topological(&self) -> std::slice::Iter<'a, CPT> {
         return self.cpts.iter();
     }
 
     fn num_vars(&self) -> usize {
-        return self.shape.len();
+        self.shape.len()
     }
 
     fn get_shape(&self) -> &Vec<usize> {
-        return &self.shape;
+        &self.shape
     }
 }
 
@@ -186,7 +188,7 @@ pub struct CompiledBayesianNetwork<'a> {
 }
 
 impl<'a> CompiledBayesianNetwork<'a> {
-    pub fn new(bn: &BayesianNetwork, _mode: CompileMode) -> CompiledBayesianNetwork<'a> {
+    pub fn new(bn: &BayesianNetwork, mode: CompileMode) -> CompiledBayesianNetwork {
         // the key is (var, state)
         let mut varcount = 0;
         // (var, value) -> indicator
@@ -203,15 +205,11 @@ impl<'a> CompiledBayesianNetwork<'a> {
                 let v = VarLabel::new(varcount);
                 varcount += 1;
                 indicators.insert((var_label, cur_value), v);
-                weight_table.insert(v.clone(), (1.0, 1.0));
+                weight_table.insert(v, (1.0, 1.0));
                 vars.push(v);
             }
             // build exactly-one constraint
-            clauses.push(
-                vars.iter()
-                    .map(|var| Literal::new(var.clone(), true))
-                    .collect(),
-            );
+            clauses.push(vars.iter().map(|var| Literal::new(*var, true)).collect());
             for i in 0..vars.len() {
                 for j in i..vars.len() {
                     if i == j {
@@ -234,11 +232,11 @@ impl<'a> CompiledBayesianNetwork<'a> {
                 varcount += 1;
                 params.insert(assignment.clone(), v);
                 match prob {
-                    &Probability::Concrete(p) => {
-                        weight_table.insert(v.clone(), (1.0, p));
+                    Probability::Concrete(p) => {
+                        weight_table.insert(v, (1.0, *p));
                     }
-                    &Probability::Symbol(vlbl) => {
-                        symbolic_map.insert(vlbl, v);
+                    Probability::Symbol(vlbl) => {
+                        symbolic_map.insert(*vlbl, v);
                     }
                 };
             }
@@ -272,7 +270,7 @@ impl<'a> CompiledBayesianNetwork<'a> {
         let cnf = Cnf::new(clauses);
         let builder =
             RobddBuilder::<'a, AllTable<BddPtr<'a>>>::new_default_order(varcount as usize);
-        let bdd: BddPtr<'a> = builder.compile_cnf(&cnf);
+        let bdd = builder.compile_cnf(&cnf);
 
         CompiledBayesianNetwork {
             builder,
@@ -281,12 +279,12 @@ impl<'a> CompiledBayesianNetwork<'a> {
             symbolic_map,
             shape: bn.shape.clone(),
             weights: weight_table,
-            mode: CompileMode::BottomUpChaviraDarwicheBDD,
+            mode,
         }
     }
 
     pub fn get_shape(&'a self) -> &Vec<usize> {
-        return &self.shape;
+        &self.shape
     }
 
     /// Computes the joint marginal probability of the subset of variables `vars`
@@ -326,7 +324,7 @@ impl<'a> CompiledBayesianNetwork<'a> {
             let wmc = cur_bdd.wmc(self.builder.get_order(), &wmc_param).0;
             r.insert(assgn, wmc);
         }
-        return r;
+        r
     }
 }
 
@@ -344,7 +342,7 @@ fn test_marginal_0() {
     )];
     let bn = BayesianNetwork::new(shape, cpts);
     let compiled = CompiledBayesianNetwork::new(&bn, CompileMode::BottomUpChaviraDarwicheBDD);
-    let r = compiled.joint_marginal(&SymbolTable::empty(), &vec![0]);
+    let r = compiled.joint_marginal(&SymbolTable::empty(), &[0]);
     assert_eq!(r[&vec![1]], 0.9);
     assert_eq!(r[&vec![0]], 0.1);
 }
@@ -375,7 +373,7 @@ fn test_marginal_1() {
     ];
     let bn = BayesianNetwork::new(shape, cpts);
     let compiled = CompiledBayesianNetwork::new(&bn, CompileMode::BottomUpChaviraDarwicheBDD);
-    let r = compiled.joint_marginal(&SymbolTable::empty(), &vec![0, 1]);
+    let r = compiled.joint_marginal(&SymbolTable::empty(), &[0, 1]);
 
     assert_eq!(r[&vec![0, 0]], 0.3 * 0.1);
     assert_eq!(r[&vec![0, 1]], 0.7 * 0.1);
@@ -411,7 +409,7 @@ fn test_marginal_2() {
     ];
     let bn = BayesianNetwork::new(shape, cpts);
     let compiled = CompiledBayesianNetwork::new(&bn, CompileMode::BottomUpChaviraDarwicheBDD);
-    let r = compiled.joint_marginal(&SymbolTable::empty(), &vec![0, 1]);
+    let r = compiled.joint_marginal(&SymbolTable::empty(), &[0, 1]);
 
     assert_eq!(r[&vec![0, 2]], 0.1 * 0.5);
     assert_eq!(r[&vec![1, 2]], 0.9 * 0.2);
@@ -420,6 +418,7 @@ fn test_marginal_2() {
 
 #[test]
 fn test_marginal_3() {
+    use assert_approx_eq::assert_approx_eq;
     // BN : (a) -> (b) <- (c)
     let shape = vec![2, 2, 2];
     let cpts = vec![
@@ -454,7 +453,7 @@ fn test_marginal_3() {
     ];
     let bn = BayesianNetwork::new(shape, cpts);
     let compiled = CompiledBayesianNetwork::new(&bn, CompileMode::BottomUpChaviraDarwicheBDD);
-    let r = compiled.joint_marginal(&SymbolTable::empty(), &vec![0, 1, 2]);
+    let r = compiled.joint_marginal(&SymbolTable::empty(), &[0, 1, 2]);
 
     assert_approx_eq!(r[&vec![0, 0, 0]], 0.1 * 0.2 * 0.1, 1e-3);
     assert_approx_eq!(r[&vec![1, 0, 1]], 0.9 * 0.8 * 0.15, 1e-3);

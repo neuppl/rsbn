@@ -7,13 +7,13 @@ use bayesian_network::*;
 
 #[no_mangle]
 pub extern "C" fn make_concrete_prob(prob: f64) -> *mut Probability {
-    return Box::into_raw(Box::new(Probability::Concrete(prob)));
+    Box::into_raw(Box::new(Probability::Concrete(prob)))
 }
 
 /// Make a symbolic probability
 #[no_mangle]
 pub extern "C" fn make_symbolic_prob(label: usize) -> *mut Probability {
-    return Box::into_raw(Box::new(Probability::Symbol(label)));
+    Box::into_raw(Box::new(Probability::Symbol(label)))
 }
 
 /// Create a CPT
@@ -25,8 +25,9 @@ pub extern "C" fn make_symbolic_prob(label: usize) -> *mut Probability {
 ///    `var`
 /// `probabilities`: list of probabilities corresponding to each element in
 ///     `assignments`
+#[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-pub extern "C" fn make_cpt(
+pub unsafe extern "C" fn make_cpt(
     var: usize,
     num_parents: usize,
     parents: *const usize,
@@ -52,11 +53,12 @@ pub extern "C" fn make_cpt(
         let prob_unwrap: Vec<Probability> = probabilities.iter().map(|x| (**x).clone()).collect();
         HashMap::from_iter(assign_vec.into_iter().zip(prob_unwrap))
     };
-    return Box::into_raw(Box::new(CPT::new(var, parent_vec, prob)));
+    Box::into_raw(Box::new(CPT::new(var, parent_vec, prob)))
 }
 
+#[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-pub extern "C" fn make_bayesian_network(
+pub unsafe extern "C" fn make_bayesian_network(
     num_vars: usize,
     shape: *const usize,
     num_cpts: usize,
@@ -67,14 +69,15 @@ pub extern "C" fn make_bayesian_network(
         let cpt_ptrvec: &[*const CPT] = std::slice::from_raw_parts(cpts, num_cpts);
         let cpt: Vec<CPT> = cpt_ptrvec.iter().map(|x| (**x).clone()).collect();
         let bn = BayesianNetwork::new(shape, cpt);
-        return Box::into_raw(Box::new(bn));
+        Box::into_raw(Box::new(bn))
     }
 }
 
 /// Construct a new symbol label that mapes the variable indexed by labels[i] to
 /// weight probs[i]
+#[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-pub extern "C" fn make_symbol_table(
+pub unsafe extern "C" fn make_symbol_table(
     num_symbols: usize,
     labels: *const usize,
     probs: *const f64,
@@ -82,33 +85,34 @@ pub extern "C" fn make_symbol_table(
     unsafe {
         let labels = std::slice::from_raw_parts(labels, num_symbols);
         let probs = std::slice::from_raw_parts(probs, num_symbols);
-        let map: HashMap<&usize, &f64> = HashMap::from_iter(labels.into_iter().zip(probs));
+        let map: HashMap<&usize, &f64> = HashMap::from_iter(labels.iter().zip(probs));
         let map_into = map.iter().map(|(&key, &value)| (*key, *value)).collect();
-        return Box::into_raw(Box::new(SymbolTable::new(map_into)));
+        Box::into_raw(Box::new(SymbolTable::new(map_into)))
     }
 }
 
+#[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-pub extern "C" fn make_empty_symbol_table() -> *mut SymbolTable {
-    return Box::into_raw(Box::new(SymbolTable::empty()));
+pub unsafe extern "C" fn make_empty_symbol_table() -> *mut SymbolTable {
+    Box::into_raw(Box::new(SymbolTable::empty()))
 }
 
+#[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-pub extern "C" fn compile_bayesian_network(
+pub unsafe extern "C" fn compile_bayesian_network(
     bn: *const BayesianNetwork,
 ) -> *mut CompiledBayesianNetwork<'static> {
-    unsafe {
-        return Box::into_raw(Box::new(CompiledBayesianNetwork::new(
-            bn.as_ref().unwrap(),
-            CompileMode::BottomUpChaviraDarwicheBDD,
-        )));
-    }
+    Box::into_raw(Box::new(CompiledBayesianNetwork::new(
+        bn.as_ref().unwrap(),
+        CompileMode::BottomUpChaviraDarwicheBDD,
+    )))
 }
 
 /// Compute the joint marginal for the subset of variables given in `vars`
 /// Gives ownership of the returned array to the caller
+#[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-pub extern "C" fn joint_marginal(
+pub unsafe extern "C" fn joint_marginal(
     bn: *mut CompiledBayesianNetwork,
     st: *const SymbolTable,
     num_vars: usize,
@@ -124,6 +128,6 @@ pub extern "C" fn joint_marginal(
         }
         let r = v.as_ptr();
         std::mem::forget(v);
-        return r;
+        r
     }
 }
